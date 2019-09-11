@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2017 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -16,19 +16,21 @@
 
 package org.springframework.web.reactive.function.server
 
-import org.junit.Test
+import org.assertj.core.api.Assertions
+import org.assertj.core.api.Assertions.assertThatExceptionOfType
+import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.fail
 import org.springframework.core.io.ClassPathResource
 import org.springframework.http.HttpHeaders.*
 import org.springframework.http.HttpMethod.*
 import org.springframework.http.MediaType.*
 import org.springframework.web.reactive.function.server.MockServerRequest.builder
-import org.springframework.web.reactive.function.server.ServerResponse.ok
 import reactor.core.publisher.Mono
 import reactor.test.StepVerifier
 import java.net.URI
 
 /**
- * Tests for [RouterFunction] Kotlin DSL
+ * Tests for [RouterFunctionDsl].
  *
  * @author Sebastien Deleuze
  */
@@ -44,7 +46,7 @@ class RouterFunctionDslTests {
 
 	@Test
 	fun accept() {
-		val request = builder().header(ACCEPT, APPLICATION_ATOM_XML_VALUE).build()
+		val request = builder().uri(URI("/content")).header(ACCEPT, APPLICATION_ATOM_XML_VALUE).build()
 		StepVerifier.create(sampleRouter().route(request))
 				.expectNextCount(1)
 				.verifyComplete()
@@ -52,7 +54,11 @@ class RouterFunctionDslTests {
 
 	@Test
 	fun acceptAndPOST() {
-		val request = builder().method(POST).uri(URI("/api/foo/")).header(ACCEPT, APPLICATION_JSON_VALUE).build()
+		val request = builder()
+				.method(POST)
+				.uri(URI("/api/foo/"))
+				.header(ACCEPT, APPLICATION_JSON_VALUE)
+				.build()
 		StepVerifier.create(sampleRouter().route(request))
 				.expectNextCount(1)
 				.verifyComplete()
@@ -60,7 +66,7 @@ class RouterFunctionDslTests {
 
 	@Test
 	fun contentType() {
-		val request = builder().header(CONTENT_TYPE, APPLICATION_OCTET_STREAM_VALUE).build()
+		val request = builder().uri(URI("/content")).header(CONTENT_TYPE, APPLICATION_OCTET_STREAM_VALUE).build()
 		StepVerifier.create(sampleRouter().route(request))
 				.expectNextCount(1)
 				.verifyComplete()
@@ -109,18 +115,38 @@ class RouterFunctionDslTests {
 				.verifyComplete()
 	}
 
+	@Test
+	fun rendering() {
+		val request = builder().uri(URI("/rendering")).build()
+		StepVerifier.create(sampleRouter().route(request).flatMap { it.handle(request) })
+				.expectNextMatches { it is RenderingResponse}
+				.verifyComplete()
+	}
 
-	fun sampleRouter() = router {
+	@Test
+	fun emptyRouter() {
+		assertThatExceptionOfType(IllegalStateException::class.java).isThrownBy {
+			router { }
+		}
+	}
+
+
+	private fun sampleRouter() = router {
 		(GET("/foo/") or GET("/foos/")) { req -> handle(req) }
 		"/api".nest {
 			POST("/foo/", ::handleFromClass)
 			PUT("/foo/", :: handleFromClass)
+			PATCH("/foo/") {
+				ok().build()
+			}
 			"/foo/"  { handleFromClass(it) }
 		}
-		accept(APPLICATION_ATOM_XML, ::handle)
-		contentType(APPLICATION_OCTET_STREAM, ::handle)
+		"/content".nest {
+			accept(APPLICATION_ATOM_XML, ::handle)
+			contentType(APPLICATION_OCTET_STREAM, ::handle)
+		}
 		method(PATCH, ::handle)
-		headers({ it.accept().contains(APPLICATION_JSON) }).nest {
+		headers { it.accept().contains(APPLICATION_JSON) }.nest {
 			GET("/api/foo/", ::handle)
 		}
 		headers({ it.header("bar").isNotEmpty() }, ::handle)
@@ -135,11 +161,12 @@ class RouterFunctionDslTests {
 			}
 		}
 		path("/baz", ::handle)
+		GET("/rendering") { RenderingResponse.create("index").build() }
 	}
 }
 
 @Suppress("UNUSED_PARAMETER")
-fun handleFromClass(req: ServerRequest) = ok().build()
+private fun handleFromClass(req: ServerRequest) = ServerResponse.ok().build()
 
 @Suppress("UNUSED_PARAMETER")
-fun handle(req: ServerRequest) = ok().build()
+private fun handle(req: ServerRequest) = ServerResponse.ok().build()

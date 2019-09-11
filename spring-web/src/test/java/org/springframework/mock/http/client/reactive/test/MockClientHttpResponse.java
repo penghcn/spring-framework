@@ -1,11 +1,11 @@
 /*
- * Copyright 2002-2016 the original author or authors.
+ * Copyright 2002-2019 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -19,6 +19,7 @@ package org.springframework.mock.http.client.reactive.test;
 import java.nio.ByteBuffer;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.util.Collection;
 
 import org.reactivestreams.Publisher;
 import reactor.core.publisher.Flux;
@@ -39,13 +40,14 @@ import org.springframework.util.MultiValueMap;
 
 /**
  * Mock implementation of {@link ClientHttpResponse}.
+ *
  * @author Brian Clozel
  * @author Rossen Stoyanchev
  * @since 5.0
  */
 public class MockClientHttpResponse implements ClientHttpResponse {
 
-	private final HttpStatus status;
+	private final int status;
 
 	private final HttpHeaders headers = new HttpHeaders();
 
@@ -55,21 +57,34 @@ public class MockClientHttpResponse implements ClientHttpResponse {
 
 	private final DataBufferFactory bufferFactory = new DefaultDataBufferFactory();
 
-	private boolean closed = false;
 
 	public MockClientHttpResponse(HttpStatus status) {
 		Assert.notNull(status, "HttpStatus is required");
+		this.status = status.value();
+	}
+
+	public MockClientHttpResponse(int status) {
+		Assert.isTrue(status >= 100 && status < 600, "Status must be between 1xx and 5xx");
 		this.status = status;
 	}
 
 
 	@Override
 	public HttpStatus getStatusCode() {
+		return HttpStatus.valueOf(this.status);
+	}
+
+	@Override
+	public int getRawStatusCode() {
 		return this.status;
 	}
 
 	@Override
 	public HttpHeaders getHeaders() {
+		if (!getCookies().isEmpty() && this.headers.get(HttpHeaders.SET_COOKIE) == null) {
+			getCookies().values().stream().flatMap(Collection::stream)
+					.forEach(cookie -> getHeaders().add(HttpHeaders.SET_COOKIE, cookie.toString()));
+		}
 		return this.headers;
 	}
 
@@ -99,19 +114,7 @@ public class MockClientHttpResponse implements ClientHttpResponse {
 
 	@Override
 	public Flux<DataBuffer> getBody() {
-		if (this.closed) {
-			return Flux.error(new IllegalStateException("Connection has been closed."));
-		}
 		return this.body;
-	}
-
-	@Override
-	public void close() {
-		this.closed = true;
-	}
-
-	public boolean isClosed() {
-		return this.closed;
 	}
 
 	/**
@@ -121,7 +124,7 @@ public class MockClientHttpResponse implements ClientHttpResponse {
 	public Mono<String> getBodyAsString() {
 		Charset charset = getCharset();
 		return Flux.from(getBody())
-				.reduce(bufferFactory.allocateBuffer(), (previous, current) -> {
+				.reduce(this.bufferFactory.allocateBuffer(), (previous, current) -> {
 					previous.write(current);
 					DataBufferUtils.release(current);
 					return previous;

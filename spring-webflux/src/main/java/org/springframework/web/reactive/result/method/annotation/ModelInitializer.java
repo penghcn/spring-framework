@@ -5,7 +5,7 @@
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
  *
- *      http://www.apache.org/licenses/LICENSE-2.0
+ *      https://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,7 +23,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.stream.Collectors;
 
-import org.jetbrains.annotations.NotNull;
 import reactor.core.publisher.Mono;
 
 import org.springframework.core.Conventions;
@@ -93,18 +92,16 @@ class ModelInitializer {
 					bindingContext.getModel().mergeAttributes(attributes);
 					bindingContext.setSessionContext(sessionAttributesHandler, session);
 					return invokeModelAttributeMethods(bindingContext, modelMethods, exchange)
-							.doOnSuccess(aVoid -> {
+							.doOnSuccess(aVoid ->
 								findModelAttributes(handlerMethod, sessionAttributesHandler).forEach(name -> {
 									if (!bindingContext.getModel().containsAttribute(name)) {
 										Object value = session.getRequiredAttribute(name);
 										bindingContext.getModel().addAttribute(name, value);
 									}
-								});
-							});
+								}));
 				});
 	}
 
-	@NotNull
 	private Mono<Void> invokeModelAttributeMethods(BindingContext bindingContext,
 			List<InvocableHandlerMethod> modelMethods, ServerWebExchange exchange) {
 
@@ -123,7 +120,7 @@ class ModelInitializer {
 		Object value = handlerResult.getReturnValue();
 		if (value != null) {
 			ResolvableType type = handlerResult.getReturnType();
-			ReactiveAdapter adapter = this.adapterRegistry.getAdapter(type.getRawClass(), value);
+			ReactiveAdapter adapter = this.adapterRegistry.getAdapter(type.resolve(), value);
 			if (isAsyncVoidType(type, adapter)) {
 				return Mono.from(adapter.toPublisher(value));
 			}
@@ -134,7 +131,7 @@ class ModelInitializer {
 	}
 
 	private boolean isAsyncVoidType(ResolvableType type, @Nullable  ReactiveAdapter adapter) {
-		return adapter != null && (adapter.isNoValue() || type.resolveGeneric() == Void.class);
+		return (adapter != null && (adapter.isNoValue() || type.resolveGeneric() == Void.class));
 	}
 
 	private String getAttributeName(MethodParameter param) {
@@ -142,7 +139,7 @@ class ModelInitializer {
 				.ofNullable(AnnotatedElementUtils.findMergedAnnotation(param.getAnnotatedElement(), ModelAttribute.class))
 				.filter(ann -> StringUtils.hasText(ann.value()))
 				.map(ModelAttribute::value)
-				.orElse(Conventions.getVariableNameForParameter(param));
+				.orElseGet(() -> Conventions.getVariableNameForParameter(param));
 	}
 
 	/** Find {@code @ModelAttribute} arguments also listed as {@code @SessionAttributes}. */
